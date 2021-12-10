@@ -105,6 +105,7 @@ def add(name: str, widgets: list[Widget]) -> None:
     return
 
 def run():
-    app.run(debug=True)
+    app.run(debug=False)
 
-run()
+if __name__ == '__main__':
+    run()
