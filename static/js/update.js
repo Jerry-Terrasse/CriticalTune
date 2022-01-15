@@ -14,6 +14,9 @@ function collectData() {
             case "3":
                 res.push(Number(obj.find("option:selected").val()));
                 break;
+            case "4":
+                res.push(0);
+                break;
             default:
                 alert('WidgetTypeError');
                 break;
@@ -26,6 +29,7 @@ function update() {
     console.log('sending:', vals);
     $.ajax({
 		type: "post",
+        contentType: "text/plain",
 		url: '/submit/' + Name,
 		data: JSON.stringify(vals),
 		dataType: "json",
@@ -34,7 +38,7 @@ function update() {
             if(res.success) {
                 $('#time').html('updated ' + res['time']);
             } else {
-                alert('Error ' + res['errorinfo']);
+                alert('Update Error: ' + res['errorinfo']);
             }
 		}
 	});

@@ -68,6 +68,8 @@
             {% endif %}
         {% endfor %}
         </select>
+    {% elif widget.type == 4 %}
+        <img class="img-responsive" src="/stream/{{widget.val}}">
     {% endif %}
     </div>
 {% endfor %}

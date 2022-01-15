@@ -1,13 +1,7 @@
 #include "tuner.h"
 
 template<typename ...Args>
-pOW OW(const std::string &name, Args ...args)
-{
-    std::vector<std::string> options;
-    (options.push_back(args), ...);
-    pOW res(new OptionWidget(name, options));
-    return res;
-}
+pOW OW(const std::string&, Args...);
 pCW CW(const std::string &name)
 {
     pCW res(new CheckWidget(name));
@@ -17,6 +11,23 @@ pNW NW(const std::string &name, int upper, int lower)
 {
     pNW res(new NumberWidget(name, upper, lower));
     return res;
+}
+pVW VW(const std::string &name)
+{
+    pVW res(new VideoWidget(name));
+    return res;
+}
+
+bool publish(int token, const cv::Mat &img)
+{
+    std::vector<uchar> buf;
+    cv::imencode(".jpg", img, buf);
+    const std::string &res = curlPOST("/publish/" + std::to_string(token), buf.data(), buf.size());
+    if(res[0] == '1') {
+        return true;
+    }
+    std::cerr << "[PUBLISH] fail" << std::endl;
+    return false;
 }
 std::string Tuner::serial()
 {
@@ -85,22 +96,30 @@ bool Tuner::start(int cnt)
         std::this_thread::sleep_for(std::chrono::seconds(3));
         return start(cnt+1);
     }
+    const std::vector<int> &dat = parse(res);
+    if(dat.size() != widgets.size()) {
+        std::cerr << "Data Length Error..." << std::endl;
+        return false;
+    }
+    data = dat;
     std::thread looper(&Tuner::loop, this);
     looper.detach();
     return true;
 }
 Tuner::Tuner(const std::string &name_, Callback callback_, bool lazy_):name(name_), callback(callback_), started(false), lazy(lazy_){}
-template<typename ...Args>
-void Tuner::addWidgets(pW widget, Args... args)
-{
-    widgets.push_back(widget);
-    addWidgets(args...);
-    return;
-}
 void Tuner::addWidgets(pW widget)
 {
     widgets.push_back(widget);
     return;
+}
+std::string VideoWidget::serial()
+{
+    //std::format
+    std::string res;
+    std::stringstream sio;
+    sio << "[4,\"" << name << "\"]";
+    sio >> res;
+    return res;
 }
 std::string OptionWidget::serial()
 {
@@ -133,13 +152,14 @@ std::string NumberWidget::serial()
     sio >> res;
     return res;
 }
+VideoWidget::VideoWidget(const std::string &name_): Widget(name_) {}
 OptionWidget::OptionWidget(const std::string &name_, const std::vector<std::string> &options_): Widget(name_)
 {
     assert(validNames(options_));
     options = options_;
     return;
 }
-CheckWidget::CheckWidget(const std::string &name_): Widget(name_){}
+CheckWidget::CheckWidget(const std::string &name_): Widget(name_) {}
 NumberWidget::NumberWidget(const std::string &name_, int upper_, int lower_): Widget(name_), lower(lower_), upper(upper_)
 {
     assert(lower_ <= upper_);
@@ -173,7 +193,7 @@ static size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *use
     ((std::string*)userp)->append((char*)contents, size * nmemb);
     return size * nmemb;
 }
-std::string curlPOST(const std::string &rurl, const std::string &data) // rurl: url relative to HOST
+std::string curlPOST(const std::string &rurl, const void *data, int len) // rurl: url relative to HOST
 {
     CURL *curl = curl_easy_init();
     std::string url = HOST + rurl;
@@ -183,19 +203,29 @@ std::string curlPOST(const std::string &rurl, const std::string &data) // rurl: 
     //std::cout << "[POST] send to " << url << ": " << data << std::endl;
     assert(curl != NULL);
     if(curl) {
+        curl_slist *header=NULL;
+        header = curl_slist_append(header, "Content-Type: text/plain");
         curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, header);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data.c_str());
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, len);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+
         res = curl_easy_perform(curl);
+        curl_slist_free_all(header);
         curl_easy_cleanup(curl);
         if(res == CURLE_OK) {
-            //std::cout << "[POST] receive: " << readBuffer << std::endl;
+            // std::cout << "[POST] receive: " << readBuffer << std::endl;
             return readBuffer;
         }
     }
     std::cerr << "[POST] CURL Error" << std::endl;
     return "fail";
+}
+std::string curlPOST(const std::string &rurl, const std::string &data)
+{
+    return curlPOST(rurl, data.data(), data.length());
 }
 std::string curlGET(const std::string &rurl) // rurl: url relative to HOST
 {
